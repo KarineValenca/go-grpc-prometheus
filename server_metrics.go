@@ -2,7 +2,8 @@ package grpc_prometheus
 
 import (
 	"context"
-	"github.com/grpc-ecosystem/go-grpc-prometheus/packages/grpcstatus"
+
+	"github.com/KarineValenca/go-grpc-prometheus/packages/grpcstatus"
 	prom "github.com/prometheus/client_golang/prometheus"
 
 	"google.golang.org/grpc"
@@ -11,13 +12,12 @@ import (
 // ServerMetrics represents a collection of metrics to be registered on a
 // Prometheus metrics registry for a gRPC server.
 type ServerMetrics struct {
-	serverStartedCounter          *prom.CounterVec
-	serverHandledCounter          *prom.CounterVec
-	serverStreamMsgReceived       *prom.CounterVec
-	serverStreamMsgSent           *prom.CounterVec
-	serverHandledHistogramEnabled bool
-	serverHandledHistogramOpts    prom.HistogramOpts
-	serverHandledHistogram        *prom.HistogramVec
+	respSizeCounter *prom.CounterVec
+	//dependencyUPGauge           *prom.GaugeVec
+	applicationInfoGauge        *prom.GaugeVec
+	reqDurationHistogramOpts    prom.HistogramOpts
+	reqDurationHistogram        *prom.HistogramVec
+	reqDurationHistogramEnabled bool
 }
 
 // NewServerMetrics returns a ServerMetrics object. Use a new instance of
@@ -27,33 +27,27 @@ type ServerMetrics struct {
 func NewServerMetrics(counterOpts ...CounterOption) *ServerMetrics {
 	opts := counterOptions(counterOpts)
 	return &ServerMetrics{
-		serverStartedCounter: prom.NewCounterVec(
+		respSizeCounter: prom.NewCounterVec(
 			opts.apply(prom.CounterOpts{
-				Name: "grpc_server_started_total",
-				Help: "Total number of RPCs started on the server.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
-		serverHandledCounter: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
-				Name: "grpc_server_handled_total",
-				Help: "Total number of RPCs completed on the server, regardless of success or failure.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method", "grpc_code"}),
-		serverStreamMsgReceived: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
-				Name: "grpc_server_msg_received_total",
-				Help: "Total number of RPC stream messages received on the server.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
-		serverStreamMsgSent: prom.NewCounterVec(
-			opts.apply(prom.CounterOpts{
-				Name: "grpc_server_msg_sent_total",
-				Help: "Total number of gRPC stream messages sent by the server.",
-			}), []string{"grpc_type", "grpc_service", "grpc_method"}),
-		serverHandledHistogramEnabled: false,
-		serverHandledHistogramOpts: prom.HistogramOpts{
-			Name:    "grpc_server_handling_seconds",
-			Help:    "Histogram of response latency (seconds) of gRPC that had been application-level handled by the server.",
+				Name: "response_size_bytes",
+				Help: "Counts the size of each HTTP response",
+			}), []string{"type", "status", "method", "addr", "isError", "errorMessage"}),
+
+		reqDurationHistogramOpts: prom.HistogramOpts{
+			Name:    "request_seconds",
+			Help:    "Duration in seconds of HTTP requests.",
 			Buckets: prom.DefBuckets,
 		},
-		serverHandledHistogram: nil,
+
+		/* dependencyUPGauge: prom.NewGaugeVec(prom.GaugeOpts{
+			Name: "dependency_up",
+			Help: "Records if a dependency is up or down. 1 for up, 0 for down",
+		}, []string{"name"}), */
+
+		applicationInfoGauge: prom.NewGaugeVec(prom.GaugeOpts{
+			Name: "application_info",
+			Help: "Static information about the application",
+		}, []string{"version"}),
 	}
 }
 
@@ -63,27 +57,26 @@ func NewServerMetrics(counterOpts ...CounterOption) *ServerMetrics {
 // options such as the defined buckets.
 func (m *ServerMetrics) EnableHandlingTimeHistogram(opts ...HistogramOption) {
 	for _, o := range opts {
-		o(&m.serverHandledHistogramOpts)
+		o(&m.reqDurationHistogramOpts)
 	}
-	if !m.serverHandledHistogramEnabled {
-		m.serverHandledHistogram = prom.NewHistogramVec(
-			m.serverHandledHistogramOpts,
-			[]string{"grpc_type", "grpc_service", "grpc_method"},
+	if !m.reqDurationHistogramEnabled {
+		m.reqDurationHistogram = prom.NewHistogramVec(
+			m.reqDurationHistogramOpts,
+			[]string{"type", "status", "method", "addr", "isError", "errorMessage"},
 		)
 	}
-	m.serverHandledHistogramEnabled = true
+	m.reqDurationHistogramEnabled = true
 }
 
 // Describe sends the super-set of all possible descriptors of metrics
 // collected by this Collector to the provided channel and returns once
 // the last descriptor has been sent.
 func (m *ServerMetrics) Describe(ch chan<- *prom.Desc) {
-	m.serverStartedCounter.Describe(ch)
-	m.serverHandledCounter.Describe(ch)
-	m.serverStreamMsgReceived.Describe(ch)
-	m.serverStreamMsgSent.Describe(ch)
-	if m.serverHandledHistogramEnabled {
-		m.serverHandledHistogram.Describe(ch)
+	m.respSizeCounter.Describe(ch)
+	//m.dependencyUPGauge.Describe(ch)
+	m.applicationInfoGauge.Describe(ch)
+	if m.reqDurationHistogramEnabled {
+		m.reqDurationHistogram.Describe(ch)
 	}
 }
 
@@ -91,12 +84,11 @@ func (m *ServerMetrics) Describe(ch chan<- *prom.Desc) {
 // metrics. The implementation sends each collected metric via the
 // provided channel and returns once the last metric has been sent.
 func (m *ServerMetrics) Collect(ch chan<- prom.Metric) {
-	m.serverStartedCounter.Collect(ch)
-	m.serverHandledCounter.Collect(ch)
-	m.serverStreamMsgReceived.Collect(ch)
-	m.serverStreamMsgSent.Collect(ch)
-	if m.serverHandledHistogramEnabled {
-		m.serverHandledHistogram.Collect(ch)
+	m.respSizeCounter.Collect(ch)
+	//m.dependencyUPGauge.Collect(ch)
+	m.applicationInfoGauge.Collect(ch)
+	if m.reqDurationHistogramEnabled {
+		m.reqDurationHistogram.Collect(ch)
 	}
 }
 
@@ -104,24 +96,30 @@ func (m *ServerMetrics) Collect(ch chan<- prom.Metric) {
 func (m *ServerMetrics) UnaryServerInterceptor() func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		monitor := newServerReporter(m, Unary, info.FullMethod)
-		monitor.ReceivedMessage()
+		//monitor.ReceivedMessage()
 		resp, err := handler(ctx, req)
 		st, _ := grpcstatus.FromError(err)
-		monitor.Handled(st.Code())
-		if err == nil {
+
+		size := 1.22
+		monitor.Handled(st.Code(), size)
+
+		/*if err == nil {
 			monitor.SentMessage()
-		}
+		}*/
 		return resp, err
 	}
 }
 
 // StreamServerInterceptor is a gRPC server-side interceptor that provides Prometheus monitoring for Streaming RPCs.
 func (m *ServerMetrics) StreamServerInterceptor() func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		monitor := newServerReporter(m, streamRPCType(info), info.FullMethod)
 		err := handler(srv, &monitoredServerStream{ss, monitor})
 		st, _ := grpcstatus.FromError(err)
-		monitor.Handled(st.Code())
+		size := 1.22
+		monitor.Handled(st.Code(), size)
+
 		return err
 	}
 }
@@ -153,6 +151,7 @@ type monitoredServerStream struct {
 	monitor *serverReporter
 }
 
+/*
 func (s *monitoredServerStream) SendMsg(m interface{}) error {
 	err := s.ServerStream.SendMsg(m)
 	if err == nil {
@@ -168,19 +167,18 @@ func (s *monitoredServerStream) RecvMsg(m interface{}) error {
 	}
 	return err
 }
+*/
 
 // preRegisterMethod is invoked on Register of a Server, allowing all gRPC services labels to be pre-populated.
-func preRegisterMethod(metrics *ServerMetrics, serviceName string, mInfo *grpc.MethodInfo) {
+func preRegisterMethod(metrics *ServerMetrics, applicationVersion string, mInfo *grpc.MethodInfo) {
 	methodName := mInfo.Name
 	methodType := string(typeFromMethodInfo(mInfo))
-	// These are just references (no increments), as just referencing will create the labels but not set values.
-	metrics.serverStartedCounter.GetMetricWithLabelValues(methodType, serviceName, methodName)
-	metrics.serverStreamMsgReceived.GetMetricWithLabelValues(methodType, serviceName, methodName)
-	metrics.serverStreamMsgSent.GetMetricWithLabelValues(methodType, serviceName, methodName)
-	if metrics.serverHandledHistogramEnabled {
-		metrics.serverHandledHistogram.GetMetricWithLabelValues(methodType, serviceName, methodName)
-	}
+	//metrics.dependencyUPGauge.GetMetricWithLabelValues(methodType, "OK"serviceName, methodName)
+	metrics.applicationInfoGauge.GetMetricWithLabelValues(applicationVersion)
 	for _, code := range allCodes {
-		metrics.serverHandledCounter.GetMetricWithLabelValues(methodType, serviceName, methodName, code.String())
+		metrics.respSizeCounter.GetMetricWithLabelValues(methodType, code.String(), "GET", methodName, "false", "")
+		if metrics.reqDurationHistogramEnabled {
+			metrics.reqDurationHistogram.GetMetricWithLabelValues(methodType, code.String(), "GET", methodName, "false", "")
+		}
 	}
 }

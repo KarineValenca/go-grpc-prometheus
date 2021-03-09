@@ -24,10 +24,8 @@ var (
 )
 
 func init() {
-	prom.MustRegister(DefaultServerMetrics.serverStartedCounter)
-	prom.MustRegister(DefaultServerMetrics.serverHandledCounter)
-	prom.MustRegister(DefaultServerMetrics.serverStreamMsgReceived)
-	prom.MustRegister(DefaultServerMetrics.serverStreamMsgSent)
+	prom.MustRegister(DefaultServerMetrics.applicationInfoGauge)
+	prom.MustRegister(DefaultServerMetrics.respSizeCounter)
 }
 
 // Register takes a gRPC server and pre-initializes all counters to 0. This
@@ -44,5 +42,5 @@ func Register(server *grpc.Server) {
 // variable and the default Prometheus metrics registry.
 func EnableHandlingTimeHistogram(opts ...HistogramOption) {
 	DefaultServerMetrics.EnableHandlingTimeHistogram(opts...)
-	prom.Register(DefaultServerMetrics.serverHandledHistogram)
+	prom.Register(DefaultServerMetrics.reqDurationHistogram)
 }

@@ -22,25 +22,25 @@ func newServerReporter(m *ServerMetrics, rpcType grpcType, fullMethod string) *s
 		metrics: m,
 		rpcType: rpcType,
 	}
-	if r.metrics.serverHandledHistogramEnabled {
+	if r.metrics.reqDurationHistogramEnabled {
 		r.startTime = time.Now()
 	}
-	r.serviceName, r.methodName = splitMethodName(fullMethod)
-	r.metrics.serverStartedCounter.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
+	//r.serviceName, r.methodName = splitMethodName(fullMethod)
+	//r.metrics.serverStartedCounter.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
 	return r
 }
 
-func (r *serverReporter) ReceivedMessage() {
-	r.metrics.serverStreamMsgReceived.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
+/*func (r *serverReporter) ReceivedMessage() {
+	r.metrics.respSizeCounter.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
 }
 
 func (r *serverReporter) SentMessage() {
 	r.metrics.serverStreamMsgSent.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Inc()
-}
+}*/
 
-func (r *serverReporter) Handled(code codes.Code) {
-	r.metrics.serverHandledCounter.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName, code.String()).Inc()
-	if r.metrics.serverHandledHistogramEnabled {
-		r.metrics.serverHandledHistogram.WithLabelValues(string(r.rpcType), r.serviceName, r.methodName).Observe(time.Since(r.startTime).Seconds())
+func (r *serverReporter) Handled(code codes.Code, size float64) {
+	r.metrics.respSizeCounter.WithLabelValues(string(r.rpcType), code.String(), "METHOD", r.methodName, "false", "").Add(size)
+	if r.metrics.reqDurationHistogramEnabled {
+		r.metrics.reqDurationHistogram.WithLabelValues(string(r.rpcType), code.String(), "METHOD", r.methodName, "false", "").Observe(time.Since(r.startTime).Seconds())
 	}
 }
